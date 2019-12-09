@@ -62,6 +62,7 @@
 //   metric_thread (diameter=34, pitch=1, length=10, internal=true, n_starts=6);
 //}
 
+ECHO_DEBUG = 0;
 
 // ----------------------------------------------------------------------------
 function segments (diameter) = min (50, max (ceil (diameter*6), 25));
@@ -188,9 +189,12 @@ module english_thread (diameter=0.25, threads_per_inch=20, length=1,
    mm_pitch = (1.0/threads_per_inch)*25.4;
    mm_length = length*25.4;
 
-   echo (str ("mm_diameter: ", mm_diameter));
-   echo (str ("mm_pitch: ", mm_pitch));
-   echo (str ("mm_length: ", mm_length));
+   if ( ECHO_DEBUG > 0 )
+   {
+	   echo (str ("mm_diameter: ", mm_diameter));
+	   echo (str ("mm_pitch: ", mm_pitch));
+	   echo (str ("mm_length: ", mm_length));
+   }
    metric_thread (mm_diameter, mm_pitch, mm_length, internal, n_starts,
                   thread_size, groove, square, rectangle, angle, taper, leadin,
                   leadfac, test);
