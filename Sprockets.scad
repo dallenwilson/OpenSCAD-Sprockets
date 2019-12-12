@@ -1,7 +1,7 @@
 /*	Sprockets v1.1
 
 	Sprocket construction module by Shawn Steele (c) 2013
-	License on Sprockets.scad is MS-PL http://opensource.org/licenses/ms-pl
+	License on Sprockets.scad is MS-PL: http://opensource.org/licenses/ms-pl
 
 	Modified by Dallen Wilson (c) 2019 to add auto-generation of keyway slot and setscrew holes.
 	Uses threads.scad from https://dkprojects.net/openscad-threads/
@@ -48,58 +48,73 @@
 
 use <threads.scad>
 
-// Adjust these if it's too tight/loose on your printer,
-// These seem to be OK on my Replicator 1
-FUDGE_BORE = 0;						// mm to fudge the edges of the bore
+// Adjust these if it's too tight/loose on your printer.
+FUDGE_BORE = 0.5;						// mm to fudge the edges of the bore
 FUDGE_ROLLER = 0;					// mm to fudge the hole for the rollers
-FUDGE_TEETH = 1;						// Additional rounding of the teeth (0 is theoretical,
-														// my rep 1 seems to need 1 on medium.)
+FUDGE_TEETH = 1;						// Additional rounding of the teeth
+FUDGE_KEYWAY = 0.5;				// mm to fudge the width/depth of the keyway
 
-SETSCREW_MIN_TEETH = 3;		// Minimum threads wanted in setscrew hole
+MIN_SETSCREW_THREADS = 3;	// Minimum threads wanted in setscrew hole
+MIN_CHAIN_CLEARANCE = 2;		// Minimum clearance between chain and hub, in mm
 
-ECHO_WARNINGS = 1;					// Echos warnings to console, eg hub not big enough for set screw
-ECHO_DEBUG = 0;						// Echos debug information to console, eg various calculated measurements
+ECHO_WARNINGS = 1;					// Echos warnings to console, example: hub not big enough for set screw
+ECHO_DEBUG = 0;						// Echos debug information to console, example: various calculated measurements
 
 function inches2mm(inches) = inches * 25.4;
 function mm2inches(mm) = mm / 25.4;
 
-module sprocket(size=25, teeth=9, bore=5/16, hub_diameter=0, hub_height=0, keyway=0, setscrew=0)
+module sprocket(size=25, teeth=9, bore=5/16, hub_diameter=0, hub_height=0, keyway=0, setscrew=0,keyway_threads=1)
 {
 	bore_radius_mm = inches2mm(bore)/2;
 	hub_radius_mm = inches2mm(hub_diameter)/2;
 	hub_height_mm = inches2mm(hub_height);
 
     sprocket_thickness = get_thickness(size);
-    hub_thickness = ((hub_diameter - bore) / 2);
-    hub_usable = (hub_height - sprocket_thickness);
+	hub_actual_height_mm = (hub_height_mm - inches2mm(sprocket_thickness));
+    hub_wall_thickness = ((hub_diameter - bore) / 2);
 
-    kw_width = get_keyway_width (bore);
-    kw_depth = get_keyway_depth (kw_width);
-
+    kw_width = inches2mm(get_keyway_width (bore));
     ss_width = get_setscrew_width (bore);
-    ss_length = hub_thickness + mm2inches (2);
-    ss_pitch = get_setscrew_pitch (ss_width);
-
-	if (( setscrew > 0 ) && ( ECHO_WARNINGS > 0 ))
+    ss_length = hub_wall_thickness + mm2inches (2);
+    ss_threads = get_setscrew_threads (ss_width);
+	
+	cp_width = get_chainplate_size (size) / 2;
+	c_centre = inches2mm(get_pitch(size)/sin(180/teeth)) / 2;
+	
+	if ( ECHO_WARNINGS > 0 )
 	{
-		if ( ss_width > hub_usable )
+		if ( hub_diameter > 0 )
 		{
-			echo ("Hub not tall enough to fit a setscrew!");
-			echo ("Min hub height:", sprocket_thickness + mm2inches(4) + ss_width);
-			echo ("Cur hub height:", hub_height);
-		}
-
-		// TODO: Check hub thickness to ensure enough threads to be useful
-		if ( (ss_pitch * hub_thickness)  < SETSCREW_MIN_TEETH)
-		{
-			echo ("Hub not thick to allow enough setscrew threads!");
-			echo ("Min hub diameter:", ((SETSCREW_MIN_TEETH / ss_pitch) * 2) + bore);
-			echo ("Cur hub diameter:", hub_diameter);
-
-			if ( ECHO_DEBUG > 0 )
+			hub_clearance = (c_centre - hub_radius_mm);
+			
+			if ( (hub_clearance - inches2mm(cp_width)) < MIN_CHAIN_CLEARANCE )
 			{
-				echo ("Minimum setscrew threads-in-hub:", SETSCREW_MIN_TEETH);
-				echo ("Current threads-in-hub:", (ss_pitch * hub_thickness));
+				echo ("Not enough clearance between chain and hub!");
+				echo ("Max hub diameter:", ((mm2inches(c_centre) - cp_width - (mm2inches(MIN_CHAIN_CLEARANCE))) * 2));
+				echo ("Cur hub diameter:", hub_diameter);
+			}
+		}
+		
+		if ( setscrew > 0 )
+		{
+			if ( inches2mm(ss_width) > hub_actual_height_mm )
+			{
+				echo ("Hub not tall enough to fit a setscrew!");
+				echo ("Min hub height:", sprocket_thickness + mm2inches(4) + ss_width);
+				echo ("Cur hub height:", hub_height);
+			}
+			
+			if ( (ss_threads * hub_wall_thickness)  < MIN_SETSCREW_THREADS)
+			{
+				echo ("Hub not thick to allow enough setscrew threads!");
+				echo ("Min hub diameter:", ((MIN_SETSCREW_THREADS / ss_threads) * 2) + bore);
+				echo ("Cur hub diameter:", hub_diameter);
+
+				if ( ECHO_DEBUG > 0 )
+				{
+					echo ("Minimum setscrew threads-in-hub:", MIN_SETSCREW_THREADS);
+					echo ("Current threads-in-hub:", (ss_threads * hub_wall_thickness));
+				}
 			}
 		}
 	}
@@ -113,7 +128,6 @@ module sprocket(size=25, teeth=9, bore=5/16, hub_diameter=0, hub_height=0, keywa
 				cylinder(h=hub_height_mm, r=hub_radius_mm);
 		}
 
-		// Make sure the bore goes through everything
 		if (bore != 0)
 		{
 			translate([0,0,-1])
@@ -121,42 +135,46 @@ module sprocket(size=25, teeth=9, bore=5/16, hub_diameter=0, hub_height=0, keywa
 
 			if (keyway != 0)
 			{
-				translate([-bore_radius_mm, 0, 0])
-				cube([inches2mm(kw_depth), inches2mm(kw_width),(inches2mm(get_thickness(size))+hub_height_mm)*3],true);
+				translate([-(bore_radius_mm+FUDGE_BORE+(kw_width/2)), -(kw_width/2), -1])
+				cube([(kw_width+FUDGE_KEYWAY), (kw_width+FUDGE_KEYWAY),(hub_height_mm+2)],false);
 			}
 
 			if (setscrew != 0)
 			{
-				if (( keyway > 0 ) && ( ECHO_WARNINGS > 0 ))
+				if (( keyway > 0 ) && (keyway_threads > 0) && ( ECHO_WARNINGS > 0 ))
 				{
-					keywall_thickness = hub_thickness - kw_depth;
+					keywall_thickness = hub_wall_thickness - (mm2inches(kw_width)/2);
 
-					if ( (ss_pitch * keywall_thickness)  < SETSCREW_MIN_TEETH)
+					if ( (ss_threads * keywall_thickness)  < MIN_SETSCREW_THREADS)
 					{
 						echo ("Hub not thick to allow enough setscrew threads in keyway!");
-						echo ("Min hub diameter:", (((SETSCREW_MIN_TEETH / ss_pitch) + kw_depth ) * 2) + bore);
+						echo ("Min hub diameter:", (((MIN_SETSCREW_THREADS / ss_threads) + (mm2inches(kw_width) / 2) ) * 2) + bore);
 						echo ("Cur hub diameter:", hub_diameter);
 
 						if ( ECHO_DEBUG > 0 )
 						{
-							echo ("Min setscrew threads-in-hub:", SETSCREW_MIN_TEETH);
-							echo ("Cur threads-in-hub:", (ss_pitch * keywall_thickness));
-							echo ("Cur hub thickness:", hub_thickness);
+							echo ("Min setscrew threads-in-hub:", MIN_SETSCREW_THREADS);
+							echo ("Cur threads-in-hub:", (ss_threads * keywall_thickness));
+							echo ("Cur hub thickness:", hub_wall_thickness);
 							echo ("Cur keyway thickness:", keywall_thickness);
-							echo ("Min keyway thickness:", SETSCREW_MIN_TEETH / ss_pitch);
+							echo ("Min keyway thickness:", MIN_SETSCREW_THREADS / ss_threads);
 						}
-		}
-
+					}
 				}
-				// Keyway setscrew
-				rotate ([0, 90, 0])
-				translate ([-inches2mm(sprocket_thickness+((hub_usable)/2)), 0, -(bore_radius_mm+inches2mm(ss_length)-1)])
-				english_thread (ss_width, ss_pitch, ss_length, true);
+				
+				if (keyway_threads > 0)
+				{
+					// Keyway setscrew
+					rotate ([0, 90, 0])
+					translate ([-(inches2mm(sprocket_thickness)+(hub_actual_height_mm/2)), 0, -(bore_radius_mm+inches2mm(ss_length)-1)])
+					english_thread (ss_width, ss_threads, ss_length, true);
+				}
 
 				// 90-offset from keyway
 				rotate ([90, 0, 0])
-				translate ([0, inches2mm(sprocket_thickness+((hub_usable)/2)), bore_radius_mm-1])
-				render () english_thread (ss_width, ss_pitch, ss_length, true);
+				translate ([0, inches2mm(sprocket_thickness)+(hub_actual_height_mm/2), bore_radius_mm-1])
+				render ()
+				english_thread (ss_width, ss_threads, ss_length, true);
 			}
 		}
 	}
@@ -168,14 +186,14 @@ module sprocket(size=25, teeth=9, bore=5/16, hub_diameter=0, hub_height=0, keywa
 		if (keyway != 0)
 		{
 			echo ("Key width:", kw_width);
-			echo ("Key depth:", kw_depth);
+			echo ("Key depth:", (kw_width/2));
 		}
 
 		if (setscrew != 0)
 		{
 			echo ("ss_width:", ss_width);
 			echo ("ss_length:", ss_length);
-			echo ("ss_pitch:", ss_pitch);
+			echo ("ss_threads:", ss_threads);
 		}
 	}
 }
@@ -330,8 +348,7 @@ function get_roller_diameter(size) =
 	// unknown
 	0;
 
-// I think there's a formula for this, but by the
-// time I realized that I already had the table...
+// Returns thickness of the sprocket (in inches) based on the size
 function get_thickness(size) =
 	// ANSI
 	size == 25 ? .110 :
@@ -354,8 +371,20 @@ function get_thickness(size) =
 	size == 630 ? .343 :
 	// unknown
 	0;
+	
+// Returns plate thickness of the chain (in inches)
+// Based on data at: https://www.rollerchain4less.com/ansi-roller-chain-dimension-chart
+function get_chainplate_size (size) =
+	size == 25 ? 0.228 :
+	size == 35 ? 0.346 :
+	size == 40 ? 0.469 :
+	size == 41 ? 0.390 :
+	size == 50 ? 0.585 :
+	size == 60 ? 0.709 :
+	size == 80 ? 0.949 :
+	0;
 
-// get_keyway_width, get_keyway_depth based on chart at:
+// get_keyway_width based on chart at:
 // http://linngear.com/wp-content/uploads/2013/06/Std-Bore-Kwy-and-SS-size-info.pdf
 // get_setscrew_width, get_setscrew_pitch based on chart at:
 // https://www.rollerchain4less.com/sprocket-tolerances-and-standards
@@ -380,14 +409,11 @@ function get_keyway_width (bore) =
     bore <= 10.9375 ? 2.5:	// 10-15/16 and below	: 2 1/2
     0;
 
-// Returns keyway depth based on keyway width
-function get_keyway_depth (width) = width / 2;
-
-// Returns width of setscrew based on bore/shaft diameter
+// Returns width of setscrew in inches based on bore/shaft diameter
 function get_setscrew_width (bore) =
 	bore <= 0.375 ? 0.0:			// 3/8 and below		: No setscrew
 	bore <= 0.5625 ? 0.1875:	// 9/16 and below		: 10-24
-	bore <= 0.875 ? 0.25:			// 7/8 and below		: 1/4-10
+	bore <= 0.875 ? 0.25:			// 7/8 and below		: 1/4-20
 	bore <= 1.25 ? 0.3125:		// 1-1/4 and below	: 5/16-18
 	bore <= 1.75 ? 0.375:			// 1-3/8 and below	: 3/8-16
 	bore <= 2.75 ? 0.5:				// 2-3/4 and below	: 1/2-13
@@ -395,9 +421,9 @@ function get_setscrew_width (bore) =
 	0;
 
 // Returns threads-per-inch based on setscrew width
-function get_setscrew_pitch (ss_width) =
+function get_setscrew_threads (ss_width) =
 	ss_width <= 0.1875 ? 24:
-	ss_width <= 0.25 ? 10:
+	ss_width <= 0.25 ? 20:
 	ss_width <= 0.3125 ? 18:
 	ss_width <= 0.375 ? 16:
 	ss_width <= 0.5 ? 13:
